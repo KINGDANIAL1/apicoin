@@ -2,7 +2,7 @@ from fastapi import FastAPI, Query
 import httpx
 import time
 
-app = FastAPI(title="nassrapi", version="2.0")
+app = FastAPI(title="nassrapi", version="3.0")
 
 BASE_URLS = [
     "https://api3.binance.com",
@@ -15,6 +15,18 @@ CACHE = {}
 CACHE_TTL = 2
 
 
+# ✅ الصفحة الرئيسية (حل 404)
+@app.get("/")
+async def root():
+    return {
+        "api": "nassrapi",
+        "status": "running",
+        "message": "Welcome to nassrapi 🚀",
+        "usage": "/api/price?symbol=BTCUSDT"
+    }
+
+
+# ✅ جلب السعر من Binance
 async def fetch_symbol(client, base, symbol):
     try:
         url = f"{base}/api/v3/ticker/price?symbol={symbol}"
@@ -32,6 +44,7 @@ async def fetch_symbol(client, base, symbol):
                 "symbol": data.get("symbol"),
                 "price": data.get("price")
             }
+
         else:
             print(f"Failed {base}: {r.status_code}")
 
@@ -41,16 +54,22 @@ async def fetch_symbol(client, base, symbol):
     return None
 
 
+# ✅ Failover + حماية من crash
 async def get_price(symbol: str):
-    async with httpx.AsyncClient() as client:
-        for base in BASE_URLS:
-            print("Trying:", base)
-            result = await fetch_symbol(client, base, symbol)
-            if result:
-                return result
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for base in BASE_URLS:
+                print("Trying:", base)
+                result = await fetch_symbol(client, base, symbol)
+                if result:
+                    return result
+    except Exception as e:
+        print("Critical error:", str(e))
+
     return None
 
 
+# ✅ API endpoint
 @app.get("/api/price")
 async def price(symbol: str = Query(default="XRPUSDT")):
     symbol = symbol.upper()
